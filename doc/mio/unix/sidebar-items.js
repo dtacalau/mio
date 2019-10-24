@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["SocketAddr","An address associated with a `mio` specific Unix socket."],["SourceFd","Adapter for [`RawFd`] providing an [`event::Source`] implementation."]]});
