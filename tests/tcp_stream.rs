@@ -25,6 +25,7 @@ const DATA2_LEN: usize = 11;
 const ID1: Token = Token(0);
 const ID2: Token = Token(1);
 
+
 #[test]
 fn is_send_and_sync() {
     assert_send::<TcpStream>();
@@ -176,7 +177,7 @@ fn set_get_ttl() {
     // on Windows: the stream must be connected before setting the ttl, otherwise
     // it is undefined behavior, register and expect a WRITABLE here to make sure
     // the stream is connected
-    poll.registry()
+    /*poll.registry()
         .register(&stream, ID1, Interests::WRITABLE)
         .expect("unable to register TCP stream");
 
@@ -184,7 +185,7 @@ fn set_get_ttl() {
         &mut poll,
         &mut events,
         vec![ExpectEvent::new(ID1, Interests::WRITABLE)],
-    );
+    );*/
 
     // set TTL, get TTL, make sure it has the expected value
     const TTL: u32 = 10;
