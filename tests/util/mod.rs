@@ -1,9 +1,10 @@
 // Not all functions are used by all tests.
 #![allow(dead_code, unused_macros)]
 
-use std::net::SocketAddr;
+use std::net::{self, Shutdown, SocketAddr};
 use std::ops::BitOr;
-use std::sync::Once;
+use std::sync::{mpsc::channel, Arc, Barrier, Once};
+use std::thread;
 use std::time::Duration;
 use std::{fmt, io};
 
@@ -257,4 +258,34 @@ macro_rules! expect_read {
         assert_eq!(&$buf[..n], expected);
         assert_eq!(address, source);
     }};
+}
+
+/// Start a listener that accepts `n_connections` connections on the returned
+/// address. If a barrier is provided it will wait on it before closing the
+/// connection.
+pub fn start_listener(
+    n_connections: usize,
+    barrier: Option<Arc<Barrier>>,
+    shutdown_write: bool,
+) -> (thread::JoinHandle<()>, SocketAddr) {
+    let (sender, receiver) = channel();
+    let thread_handle = thread::spawn(move || {
+        let listener = net::TcpListener::bind(any_local_address()).unwrap();
+        let local_address = listener.local_addr().unwrap();
+        sender.send(local_address).unwrap();
+
+        for _ in 0..n_connections {
+            let (stream, _) = listener.accept().unwrap();
+            if let Some(ref barrier) = barrier {
+                barrier.wait();
+
+                if shutdown_write {
+                    stream.shutdown(Shutdown::Write).unwrap();
+                    barrier.wait();
+                }
+            }
+            drop(stream);
+        }
+    });
+    (thread_handle, receiver.recv().unwrap())
 }

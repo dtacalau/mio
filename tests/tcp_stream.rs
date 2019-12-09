@@ -16,7 +16,7 @@ use util::init;
 
 use util::{
     any_local_address, any_local_ipv6_address, assert_send, assert_sync, assert_would_block,
-    expect_events, expect_no_events, init_with_poll, ExpectEvent, Readiness,
+    expect_events, expect_no_events, init_with_poll, start_listener, ExpectEvent, Readiness,
 };
 
 const DATA1: &[u8] = b"Hello world!";
@@ -663,36 +663,6 @@ fn echo_listener(addr: SocketAddr, n_connections: usize) -> (thread::JoinHandle<
                 }
                 checked_write!(stream.write(&buf[..n]));
             }
-        }
-    });
-    (thread_handle, receiver.recv().unwrap())
-}
-
-/// Start a listener that accepts `n_connections` connections on the returned
-/// address. If a barrier is provided it will wait on it before closing the
-/// connection.
-fn start_listener(
-    n_connections: usize,
-    barrier: Option<Arc<Barrier>>,
-    shutdown_write: bool,
-) -> (thread::JoinHandle<()>, SocketAddr) {
-    let (sender, receiver) = channel();
-    let thread_handle = thread::spawn(move || {
-        let listener = net::TcpListener::bind(any_local_address()).unwrap();
-        let local_address = listener.local_addr().unwrap();
-        sender.send(local_address).unwrap();
-
-        for _ in 0..n_connections {
-            let (stream, _) = listener.accept().unwrap();
-            if let Some(ref barrier) = barrier {
-                barrier.wait();
-
-                if shutdown_write {
-                    stream.shutdown(Shutdown::Write).unwrap();
-                    barrier.wait();
-                }
-            }
-            drop(stream);
         }
     });
     (thread_handle, receiver.recv().unwrap())
