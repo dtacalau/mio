@@ -4,12 +4,17 @@ use mio::{event, Events, Interest, Poll, Registry, Token};
 use std::net;
 use std::sync::{Arc, Barrier};
 use std::thread::{self, sleep};
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
 use std::{fmt, io};
 
 mod util;
 
-use util::{any_local_address, assert_send, assert_sync, init};
+use util::{any_local_address, assert_send, assert_sync, expect_events, init, init_with_poll, ExpectEvent, start_listener};
+
+const ID1: Token = Token(1);
+const ID2: Token = Token(2);
+const ID3: Token = Token(3);
 
 #[test]
 fn is_send_and_sync() {
@@ -199,6 +204,45 @@ fn registry_behind_arc() {
 
     handle1.join().unwrap();
     handle2.join().unwrap();
+}
+
+#[test]
+fn poll_keeps_timeout_zero() {
+    let (mut poll, mut events) = init_with_poll();
+
+    let barrier = Arc::new(Barrier::new(2));
+    let (thread_handle, address) = start_listener(1, Some(barrier.clone()), false);
+
+    let mut stream = TcpStream::connect(address).unwrap();
+
+    poll.registry()
+    .register(&mut stream, ID1, Interest::WRITABLE)
+    .expect("unable to register TCP stream");
+
+    sleep(Duration::from_millis(100));
+    
+    let mut now = Instant::now();
+    poll.poll(&mut events, Some(Duration::from_millis(0))).unwrap();
+    assert!(now.elapsed().as_millis() <= 1);
+    assert!(events.iter().count() >= 1);
+
+    now = Instant::now();
+    poll.poll(&mut events, Some(Duration::from_millis(0))).unwrap();
+    assert!(now.elapsed().as_millis() <= 1);
+    assert!(events.iter().count() == 0);
+
+    barrier.wait();
+    thread_handle.join().unwrap();
+}
+
+#[test]
+fn poll_timeout_none() {
+
+}
+
+#[test]
+fn poll_timeout_500msec() {
+
 }
 
 // On kqueue platforms registering twice (not *re*registering) works.
