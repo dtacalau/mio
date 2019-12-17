@@ -155,13 +155,10 @@ cfg_net! {
     use ntapi::ntioapi::NtCreateFile;
     use std::mem::zeroed;
     use std::os::windows::io::{FromRawHandle, RawHandle};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use winapi::um::handleapi::INVALID_HANDLE_VALUE;
     use winapi::um::winbase::{SetFileCompletionNotificationModes, FILE_SKIP_SET_EVENT_ON_HANDLE};
     use winapi::um::winnt::SYNCHRONIZE;
-    use winapi::um::winnt::{FILE_SHARE_READ, FILE_SHARE_WRITE};
-
-    static NEXT_TOKEN: AtomicUsize = AtomicUsize::new(0);
+    use winapi::um::winnt::{FILE_SHARE_READ, FILE_SHARE_WRITE};   
 
     impl AfdPollInfo {
         pub fn zeroed() -> AfdPollInfo {
@@ -171,7 +168,7 @@ cfg_net! {
 
     impl Afd {
         /// Create new Afd instance.
-        pub fn new(cp: &CompletionPort) -> io::Result<Afd> {
+        pub fn new(cp: &CompletionPort, key: usize) -> io::Result<Afd> {
             let mut afd_helper_handle: HANDLE = INVALID_HANDLE_VALUE;
             let mut iosb = IO_STATUS_BLOCK {
                 u: IO_STATUS_BLOCK_u { Status: 0 },
@@ -198,9 +195,8 @@ cfg_net! {
                     ));
                 }
                 let fd = File::from_raw_handle(afd_helper_handle as RawHandle);
-                let token = NEXT_TOKEN.fetch_add(1, Ordering::Relaxed) + 1;
                 let afd = Afd { fd };
-                cp.add_handle(token, &afd.fd)?;
+                cp.add_handle(key, &afd.fd)?;
                 match SetFileCompletionNotificationModes(
                     afd_helper_handle,
                     FILE_SKIP_SET_EVENT_ON_HANDLE,

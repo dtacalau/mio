@@ -1,4 +1,4 @@
-use super::selector::SockState;
+use super::sock_selector::SockState;
 use super::{inaddr_any, new_socket, socket_addr, InternalState};
 use crate::sys::windows::init;
 use crate::{event, poll, Interest, Registry, Token};
@@ -221,7 +221,7 @@ impl event::Source for TcpStream {
             let mut internal = self.internal.lock().unwrap();
             if internal.is_none() {
                 *internal = Some(InternalState::new(
-                    poll::selector(registry).clone_inner(),
+                    poll::selector(registry).sock_selector(),
                     token,
                     interests,
                 ));
@@ -416,7 +416,7 @@ impl event::Source for TcpListener {
             let mut internal = self.internal.lock().unwrap();
             if internal.is_none() {
                 *internal = Some(InternalState::new(
-                    poll::selector(registry).clone_inner(),
+                    poll::selector(registry).sock_selector(),
                     token,
                     interests,
                 ));

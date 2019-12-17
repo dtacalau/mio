@@ -3,12 +3,18 @@ use std::sync::{Arc, Mutex};
 
 mod afd;
 mod io_status_block;
-
+pub mod completion_handler;
 pub mod event;
 pub use event::{Event, Events};
 
 mod selector;
-pub use selector::{Selector, SelectorInner, SockState};
+pub use selector::{Selector, SelectorInner};
+
+mod sock_selector;
+pub use sock_selector::{SockSelector, SockState};
+
+use winapi::um::minwinbase::OVERLAPPED;
+use winapi::shared::ntdef::PVOID;
 
 // Macros must be defined before the modules that use them
 cfg_net! {
@@ -76,14 +82,14 @@ cfg_net! {
     };
 
     struct InternalState {
-        selector: Arc<SelectorInner>,
+        selector: Arc<SockSelector>,
         token: Token,
         interests: Interest,
         sock_state: Option<Pin<Arc<Mutex<SockState>>>>,
     }
 
     impl InternalState {
-        fn new(selector: Arc<SelectorInner>, token: Token, interests: Interest) -> InternalState {
+        fn new(selector: Arc<SockSelector>, token: Token, interests: Interest) -> InternalState {
             InternalState {
                 selector,
                 token,
@@ -156,5 +162,20 @@ cfg_net! {
                 SocketAddr::V6(addr)
             }
         }
+    }
+
+    /// Converts the pointer to a `SockState` into a raw pointer.
+    /// To revert see `from_overlapped`.
+    fn into_overlapped(sock_state: Pin<Arc<Mutex<SockState>>>) -> PVOID {
+        let overlapped_ptr: *const Mutex<SockState> =
+            unsafe { Arc::into_raw(Pin::into_inner_unchecked(sock_state)) };
+        overlapped_ptr as *mut _
+    }
+
+    /// Convert a raw overlapped pointer into a reference to `SockState`.
+    /// Reverts `into_overlapped`.
+    fn from_overlapped(ptr: *mut OVERLAPPED) -> Pin<Arc<Mutex<SockState>>> {
+        let sock_ptr: *const Mutex<SockState> = ptr as *const _;
+        unsafe { Pin::new_unchecked(Arc::from_raw(sock_ptr)) }
     }
 }
