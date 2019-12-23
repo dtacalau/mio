@@ -67,6 +67,14 @@ cfg_any_os_util! {
     }
 }
 
+#[cfg(windows)]
+cfg_any_os_util! {
+    /// abc
+    pub mod windows {
+        pub use crate::sys::CompletionSourceHandle;
+    }
+}
+
 // Enable with `cargo doc --features guide`.
 #[cfg(feature = "guide")]
 pub mod guide {

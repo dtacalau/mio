@@ -15,6 +15,8 @@ cfg_tcp! {
 cfg_udp! {
     mod udp;
     pub use self::udp::UdpSocket;
+    mod async_file;
+    pub use self::async_file::AsyncFile;
 }
 
 #[cfg(unix)]

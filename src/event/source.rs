@@ -138,3 +138,9 @@ where
         self.deref_mut().deregister(registry)
     }
 }
+
+/// dsda
+pub trait CompletionSource {
+    /// abc
+    fn associate_cp(&mut self, registry: &Registry) -> io::Result<()>;
+}

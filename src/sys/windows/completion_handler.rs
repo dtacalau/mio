@@ -6,12 +6,12 @@ use winapi::um::minwinbase::OVERLAPPED_ENTRY;
 // is calling it.
 // TODO: with the current locking scheme, it'd be more efficient to handle
 // completions in bulk.
-pub type CompletionHandler = fn(&'_ OVERLAPPED_ENTRY) -> Option<Event>;
+pub type CompletionHandler2 = fn(&'_ OVERLAPPED_ENTRY) -> Option<Event>;
 
-pub fn as_key(handler: CompletionHandler) -> usize {
+pub fn as_key(handler: CompletionHandler2) -> usize {
     unsafe { transmute(handler) }
 }
 
-pub unsafe fn from_key(key: usize) -> CompletionHandler {
+pub unsafe fn from_key(key: usize) -> CompletionHandler2 {
     transmute(key)
 }

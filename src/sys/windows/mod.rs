@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 
 mod afd;
 mod io_status_block;
-pub mod completion_handler;
 pub mod event;
 pub use event::{Event, Events};
 
@@ -13,8 +12,10 @@ pub use selector::{Selector, SelectorInner};
 mod sock_selector;
 pub use sock_selector::{SockSelector, SockState};
 
-use winapi::um::minwinbase::OVERLAPPED;
+mod completion_handler;
+
 use winapi::shared::ntdef::PVOID;
+use winapi::um::minwinbase::{OVERLAPPED};
 
 // Macros must be defined before the modules that use them
 cfg_net! {
@@ -55,6 +56,15 @@ cfg_tcp! {
 cfg_udp! {
     mod udp;
     pub use udp::UdpSocket;
+
+    mod completion_source;
+    pub use completion_source::HasCompletion;
+    pub use completion_source::CompletionHandler;
+    pub use completion_source::CompletionSourceHandle;
+    pub use completion_source::AssociatedCSHState;
+
+    mod async_file;
+    pub use async_file::AsyncFile;
 }
 
 mod waker;

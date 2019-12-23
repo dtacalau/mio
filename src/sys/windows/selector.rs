@@ -9,10 +9,13 @@ use miow::iocp::{CompletionPort, CompletionStatus};
 #[cfg(debug_assertions)]
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{Ordering};
-use std::sync::Arc;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use std::{io};
 use winapi::shared::winerror::{WAIT_TIMEOUT};
+
+use std::collections::VecDeque;
 
 
 /// Each Selector has a globally unique(ish) ID associated with it. This ID
@@ -50,6 +53,8 @@ impl Selector {
         })
     }
 
+    //TODO: not really ok to return this here because there could be multiple of them,
+    // how to return the one we need?
     pub(super) fn sock_selector(&self) -> Arc<SockSelector> {
         self.inner.sock_selector()
     }
@@ -77,18 +82,37 @@ impl Selector {
 
 cfg_net! {
     use super::SocketState;
+    use super::HasCompletion;
+    use super::CompletionHandler;
+    use super::CompletionSourceHandle;
+    use super::AssociatedCSHState;
     use crate::Token;
-    use std::os::windows::io::AsRawSocket;
+    use std::os::windows::io::{AsRawHandle, AsRawSocket};
 
     impl Selector {
+        pub fn associate_cp<T>(
+            &self,
+            csh: &mut CompletionSourceHandle<T>,
+        ) -> io::Result<()> 
+        where T: HasCompletion + AsRawHandle, {
+            self.inner.associate_cp(csh)
+        }
+
+        pub fn dissociate_cp<T>(
+            &self,
+            csh: &mut CompletionSourceHandle<T>,
+        ) -> io::Result<()> 
+        where T: HasCompletion + AsRawHandle, {
+            self.inner.dissociate_cp(csh)
+        }
+
         pub fn register<S: SocketState + AsRawSocket>(
             &self,
             socket: &S,
             token: Token,
             interests: Interest,
         ) -> io::Result<()> {
-            let sock_selector = self.inner.sock_selector();
-            sock_selector.register(socket, token, interests)
+            self.inner.register(socket, token, interests)
         }
 
         pub fn reregister<S: SocketState>(
@@ -97,13 +121,11 @@ cfg_net! {
             token: Token,
             interests: Interest,
         ) -> io::Result<()> {
-            self.inner
-            .sock_selector()
-            .reregister(socket, token, interests)
+            self.inner.reregister(socket, token, interests)
         }
 
         pub fn deregister<S: SocketState>(&self, socket: &S) -> io::Result<()> {
-            self.inner.sock_selector().deregister(socket)
+            self.inner.deregister(socket)
         }
 
         #[cfg(debug_assertions)]
@@ -117,10 +139,12 @@ cfg_net! {
 pub struct SelectorInner {
     cp: Arc<CompletionPort>,
     sock_selector: Arc<SockSelector>,
+    csh_state_queue: Mutex<VecDeque<Pin<Arc<Mutex<AssociatedCSHState>>>>>,
 }
 
 // We have ensured thread safety by introducing lock manually.
 unsafe impl Sync for SelectorInner {}
+use std::mem::transmute;
 
 impl SelectorInner {
     pub fn new() -> io::Result<SelectorInner> {
@@ -130,12 +154,81 @@ impl SelectorInner {
             SelectorInner {
                 cp,
                 sock_selector: Arc::new(SockSelector::new(cp_afd)),
+                csh_state_queue: Mutex::new(VecDeque::new()),
             }
         })
     }
 
+    pub fn as_key(handler: CompletionHandler) -> usize {
+        unsafe { transmute(handler) }
+    }
+    
+    pub fn associate_cp<T> (
+        &self,
+        csh: &mut CompletionSourceHandle<T>,
+    ) -> io::Result<()> 
+    where T: HasCompletion + AsRawHandle, {
+        let completion_source = csh.get_completion_source();
+        let csh_state = csh.get_state();
+        
+        match csh_state {
+            Some(state)  => {
+                return Err(io::Error::from(io::ErrorKind::AlreadyExists));
+            }
+        
+            None => {
+            let key = Self::as_key(completion_source.get_completion_handler());
+            self.cp.add_handle(key, &(*completion_source)).unwrap();
+
+            let state_arc = Arc::pin(Mutex::new(
+                AssociatedCSHState::new(Arc::clone(&self.cp), completion_source.get_raw_handle(), completion_source.get_completion_handler())));
+            self.csh_state_queue.lock().unwrap().push_back(state_arc.clone());
+
+            csh.set_state(Some(state_arc));
+            }
+        }
+
+        //TODO: handle error case here
+        Ok(())
+    }
+
+    pub fn dissociate_cp<T>(
+        &self,
+        csh: &mut CompletionSourceHandle<T>,
+    ) -> io::Result<()>
+    where T: HasCompletion + AsRawHandle,  {
+        //let csh_state_queue = self.csh_state_queue.lock().unwrap();
+        //let csource_handle = csource.get_handle().unwrap();
+        //TODO: do a proper delete here or some kind of removal
+        //self.csh_state_queue.delete(csource_handle);
+        //csh_state.dissociate_cp(Arc::clone(&self.cp))
+        Ok(())
+    }
+
     pub fn sock_selector(&self) -> Arc<SockSelector> {
         self.sock_selector.clone()
+    }
+
+    pub fn register<S: SocketState + AsRawSocket>(
+        &self,
+        socket: &S,
+        token: Token,
+        interests: Interest,
+    ) -> io::Result<()> {
+        self.sock_selector().register(socket, token, interests)
+    }
+
+    pub fn reregister<S: SocketState>(
+        &self,
+        socket: &S,
+        token: Token,
+        interests: Interest,
+    ) -> io::Result<()> {
+        self.sock_selector().reregister(socket, token, interests)
+    }
+
+    pub fn deregister<S: SocketState>(&self, socket: &S) -> io::Result<()> {
+        self.sock_selector().deregister(socket)
     }
 
     /// # Safety
@@ -224,6 +317,7 @@ impl Drop for SelectorInner {
             }
         }
 
+        //TODO: how to handle this w/o having afd knowledge
        //temp disabled self.afd_group.release_unused_afd();
     }
 }
