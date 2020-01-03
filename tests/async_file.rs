@@ -20,6 +20,7 @@ pub fn raw(ov: &OVERLAPPED) -> *mut OVERLAPPED {
     ov as *const _ as *mut _
 }
 
+/*
 #[test]
 fn test_async_file() {
     let (mut poll, mut events) = init_with_poll();
@@ -58,4 +59,51 @@ fn test_async_file() {
 
     // check what we read is ok
     assert_eq!(&buf[..DATA1.len()], DATA1);
+}
+*/
+
+#[test]
+fn test_async_file() {
+    let (mut poll, mut events) = init_with_poll();
+
+    let mut path = PathBuf::from("c:\\");
+    path.push("work");
+    path.push("git");
+    path.push("mio");
+    path.push("some_file.txt");
+    let async_file = AsyncFile::open(path.as_path()).unwrap();
+
+    // register the async file's overlapped io handle with the poll's completion port
+    mio::windows::register_cp_handle(
+        poll.registry(),
+        async_file.sys.clone(),
+        async_file.iocp_resource()).unwrap();
+
+    //let iocp_resource = async_file.iocp_resource();
+    
+    {
+        // do an async write
+        let overlapped: OVERLAPPED = async_file.reserve_overlapped();
+        unsafe {
+            async_file.write(&DATA1, raw(&overlapped)).unwrap();
+        }
+
+        // this will return when async write completed
+        poll.poll(&mut events, None).unwrap();
+    }
+
+    {
+        // do an async read
+        let mut buf = [0; 20];
+        let overlapped: OVERLAPPED = async_file.reserve_overlapped();
+        unsafe {
+            async_file.read(&mut buf, raw(&overlapped)).unwrap();
+        }
+
+        // this will return when async read completed
+        poll.poll(&mut events, None).unwrap();
+
+        // check what we read is ok
+        assert_eq!(&buf[..DATA1.len()], DATA1);
+    }
 }

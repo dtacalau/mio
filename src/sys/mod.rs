@@ -75,6 +75,9 @@ cfg_os_poll! {
     mod windows;
     pub(crate) use self::windows::*;
     pub use self::windows::CompletionSourceHandle;
+    pub use self::windows::register_cp_handle;
+    pub use self::windows::IocpResource;
+    pub use self::windows::FileOpComplete;
 }
 
 cfg_not_os_poll! {

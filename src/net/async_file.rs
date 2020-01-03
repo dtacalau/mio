@@ -14,11 +14,13 @@ use crate::{sys};
 use std::fmt;
 use std::io;
 use std::sync::Arc;
-//#[cfg(windows)]
-//use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, RawHandle};
+#[cfg(windows)]
+use std::os::windows::io::{RawHandle};
+#[cfg(windows)]
+use winapi::um::minwinbase::OVERLAPPED;
 
 use std::path::Path;
-use winapi::um::minwinbase::OVERLAPPED;
+use crate::windows::{IocpResource, FileOpComplete};
 
 /// abc
 /// abc
@@ -49,6 +51,16 @@ impl AsyncFile {
     ///
     pub unsafe fn read(&self, buf: &mut [u8], overlapped: *mut OVERLAPPED) -> io::Result<()> {
         self.sys.read(buf, overlapped)
+    }
+
+    /// abc
+    pub fn reserve_overlapped(&self) -> OVERLAPPED {
+        self.sys.reserve_overlapped()
+    }
+
+    /// abc
+    pub fn iocp_resource(&self) -> IocpResource<FileOpComplete> {
+        self.sys.iocp_resource()
     }
 }
 

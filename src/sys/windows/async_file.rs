@@ -4,7 +4,7 @@ use std::path::Path;
 use std::fs::File;
 use std::ptr::null_mut;
 use std::cmp;
-
+use std::mem;
 
 use winapi::um::fileapi::{CreateFileA, ReadFile, WriteFile, CREATE_NEW, OPEN_EXISTING};
 use winapi::um::winnt::{GENERIC_READ, GENERIC_WRITE, FILE_SHARE_READ, FILE_SHARE_WRITE};
@@ -17,6 +17,9 @@ use winapi::shared::minwindef::FALSE;
 
 pub use super::HasCompletion;
 pub use super::CompletionHandler;
+pub use super::IocpResource;
+pub use super::FileOpComplete;
+
 use winapi::um::minwinbase::OVERLAPPED_ENTRY;
 
 use ::std;
@@ -24,6 +27,7 @@ use std::ffi::CString;
 
 #[derive(Debug)]
 pub struct AsyncFile {
+    resource: IocpResource<FileOpComplete>,
     fd: File,
 }
 
@@ -43,12 +47,17 @@ impl AsyncFile {
             );
         
 
-        if h == INVALID_HANDLE_VALUE {
-            Err(io::Error::last_os_error())
-        } else {
-            Ok(AsyncFile{ fd: File::from_raw_handle(h as RawHandle)})
+            if h == INVALID_HANDLE_VALUE {
+                return Err(io::Error::last_os_error());
+            }
+
+            let complete = FileOpComplete{};
+            let resource_ = IocpResource::new(complete, 2);
+            Ok(AsyncFile{
+                resource: resource_,
+                fd: File::from_raw_handle(h as RawHandle)
+            })
         }
-    }
     }
     
     pub unsafe fn read(&self, buf: &mut [u8], overlapped: *mut OVERLAPPED) -> io::Result<()> {
@@ -85,6 +94,15 @@ impl AsyncFile {
 
         // we got here if write return TRUE which should not happen because it is async
         Err(io::Error::new(io::ErrorKind::Other, ""))
+    }
+
+    pub fn reserve_overlapped(&self) -> OVERLAPPED {
+        let overlapped: OVERLAPPED = unsafe { mem::zeroed() };
+        overlapped
+    }
+
+    pub fn iocp_resource(&self) -> IocpResource<FileOpComplete> {
+        self.resource.clone()
     }
 }
 

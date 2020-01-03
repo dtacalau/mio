@@ -15,7 +15,7 @@ use std::time::Duration;
 use std::{io};
 use winapi::shared::winerror::{WAIT_TIMEOUT};
 
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashSet};
 
 
 /// Each Selector has a globally unique(ish) ID associated with it. This ID
@@ -83,13 +83,25 @@ impl Selector {
 cfg_net! {
     use super::SocketState;
     use super::HasCompletion;
+    use super::Complete;
     use super::CompletionHandler;
     use super::CompletionSourceHandle;
     use super::AssociatedCSHState;
+    use super::IocpResource;
     use crate::Token;
-    use std::os::windows::io::{AsRawHandle, AsRawSocket};
+    use std::os::windows::io::{AsRawHandle, AsRawSocket, RawHandle};
 
     impl Selector {
+
+        pub fn register_cp_handle<H, T>(
+            &self,
+            io_handler: Arc<H>,
+            iocp_resource: IocpResource<T>
+        ) -> io::Result<()> 
+        where H: AsRawHandle, T: Complete, {
+            self.inner.register_cp_handle(io_handler, iocp_resource)
+        }
+
         pub fn associate_cp<T>(
             &self,
             csh: &mut CompletionSourceHandle<T>,
@@ -140,6 +152,7 @@ pub struct SelectorInner {
     cp: Arc<CompletionPort>,
     sock_selector: Arc<SockSelector>,
     csh_state_queue: Mutex<VecDeque<Pin<Arc<Mutex<AssociatedCSHState>>>>>,
+    iocp_handle_set: HashSet<RawHandle>,
 }
 
 // We have ensured thread safety by introducing lock manually.
@@ -155,12 +168,32 @@ impl SelectorInner {
                 cp,
                 sock_selector: Arc::new(SockSelector::new(cp_afd)),
                 csh_state_queue: Mutex::new(VecDeque::new()),
+                iocp_handle_set: HashSet::<RawHandle>::new(),
             }
         })
     }
 
     pub fn as_key(handler: CompletionHandler) -> usize {
         unsafe { transmute(handler) }
+    }
+
+    pub fn register_cp_handle<H, T>(
+        &self,
+        io_handler: Arc<H>,
+        iocp_resource: IocpResource<T>
+    ) -> io::Result<()> 
+    where H: AsRawHandle, T: Complete, {
+/*
+        if self.iocp_handle_set.contains(&io_handler) {
+            return Err(io::Error::from(io::ErrorKind::AlreadyExists));   
+        }*/
+
+        let key = iocp_resource.get_completion_handler();
+        self.cp.add_handle(key, &*io_handler).unwrap();
+
+       // self.iocp_handle_set.insert(*io_handler);
+
+        Ok(())
     }
     
     pub fn associate_cp<T> (

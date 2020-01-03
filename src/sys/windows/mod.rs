@@ -62,6 +62,10 @@ cfg_udp! {
     pub use completion_source::CompletionHandler;
     pub use completion_source::CompletionSourceHandle;
     pub use completion_source::AssociatedCSHState;
+    pub use completion_source::register_cp_handle;
+    pub use completion_source::IocpResource;
+    pub use completion_source::FileOpComplete;
+    pub use completion_source::Complete;
 
     mod async_file;
     pub use async_file::AsyncFile;

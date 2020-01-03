@@ -72,6 +72,9 @@ cfg_any_os_util! {
     /// abc
     pub mod windows {
         pub use crate::sys::CompletionSourceHandle;
+        pub use crate::sys::register_cp_handle;
+        pub use crate::sys::IocpResource;
+        pub use crate::sys::FileOpComplete;
     }
 }
 
